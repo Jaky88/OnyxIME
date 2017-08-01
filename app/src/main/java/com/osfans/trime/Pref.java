@@ -1,0 +1,257 @@
+/*
+ * Copyright 2010 Google Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.osfans.trime;
+
+import android.app.AlertDialog;
+import android.app.ProgressDialog;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.preference.Preference;
+import android.preference.ListPreference;
+import android.preference.Preference.OnPreferenceChangeListener;
+import android.preference.Preference.OnPreferenceClickListener;
+import android.preference.PreferenceActivity;
+import android.preference.PreferenceScreen;
+import android.preference.SwitchPreference;
+import android.content.SharedPreferences;
+
+import android.view.View;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.util.Log;
+import android.content.Intent;
+import android.provider.Settings;
+import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.InputMethodInfo;
+import android.Manifest;
+import android.app.Activity;
+import android.content.pm.PackageManager;
+import android.os.Build.VERSION_CODES;
+import android.os.Build.VERSION;
+import android.annotation.TargetApi;
+
+/** 配置輸入法 */
+public class Pref extends PreferenceActivity
+                  implements SharedPreferences.OnSharedPreferenceChangeListener {
+
+  private final String licenseUrl = "file:///android_asset/licensing.html";
+  private ProgressDialog mProgressDialog;
+  private Preference mKeySoundVolumePref, mKeyVibrateDurationPref;
+
+  @Override
+  protected void onCreate(Bundle savedInstanceState) {
+    if (VERSION.SDK_INT >= VERSION_CODES.M) requestPermission();
+    SharedPreferences prefs = Function.getPref(this);
+    boolean is_dark = prefs.getBoolean("pref_ui", false);
+    if (VERSION.SDK_INT >= VERSION_CODES.LOLLIPOP) {
+      setTheme(is_dark ? 0x01030224 : 0x01030237);
+    } else {
+      setTheme(is_dark ? android.R.style.Theme_Holo : android.R.style.Theme_Holo_Light);
+    }
+    super.onCreate(savedInstanceState);
+    addPreferencesFromResource(R.xml.prefs);
+
+    Preference pref = findPreference("pref_librime_ver");
+    pref.setSummary(Rime.get_librime_version());
+    pref = findPreference("pref_opencc_ver");
+    pref.setSummary(Rime.get_opencc_version());
+    pref = findPreference("pref_changelog");
+    String version = Function.getVersion(this);
+    pref.setSummary(version);
+    String commit = version.replaceAll("^(.*-g)(.+)(-.*)$", "$2");
+    pref.setIntent(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/osfans/trime/commits/"+commit)));
+    pref = findPreference("pref_enable");
+    if (isEnabled()) getPreferenceScreen().removePreference(pref);
+    mProgressDialog = new ProgressDialog(this);
+    mProgressDialog.setCancelable(false);
+    mKeySoundVolumePref = findPreference("key_sound_volume");
+    mKeyVibrateDurationPref = findPreference("key_vibrate_duration");
+    mKeySoundVolumePref.setEnabled(prefs.getBoolean("key_sound", false));
+    mKeyVibrateDurationPref.setEnabled(prefs.getBoolean("key_vibrate", false));
+    boolean isQQ = Function.isAppAvailable(this, "com.tencent.mobileqq");
+    pref = findPreference("pref_trime_qq");
+    pref.setSelectable(isQQ);
+    pref = findPreference("pref_rime_qq");
+    pref.setSelectable(isQQ);
+  }
+
+  public void onSharedPreferenceChanged(SharedPreferences prefs,
+          String key) {
+    Trime trime = Trime.getService();
+    boolean value;
+    switch (key) {
+      case "key_sound":
+        if (trime!= null) trime.resetEffect();
+        value = prefs.getBoolean(key, false);
+        mKeySoundVolumePref.setEnabled(value);
+        break;
+      case "key_vibrate":
+        if (trime!= null) trime.resetEffect();
+        value = prefs.getBoolean(key, false);
+        mKeyVibrateDurationPref.setEnabled(value);
+        break;
+      case "key_sound_volume":
+        if (trime!= null) {
+          trime.resetEffect();
+          trime.soundEffect();
+        }
+        break;
+      case "key_vibrate_duration":
+        if (trime!= null) {
+          trime.resetEffect();
+          trime.vibrateEffect();
+        }
+        break;
+      case "speak_key":
+      case "speak_commit":
+        if (trime!= null) trime.resetEffect();
+        break;
+    }
+  }
+
+  @Override
+  protected void onResume() {
+    super.onResume();
+    getPreferenceScreen().getSharedPreferences()
+            .registerOnSharedPreferenceChangeListener(this);
+  }
+
+  @Override
+  protected void onPause() {
+    super.onPause();
+    getPreferenceScreen().getSharedPreferences()
+            .unregisterOnSharedPreferenceChangeListener(this);
+  }
+
+  private void showLicenseDialog() {
+    View licenseView = View.inflate(this, R.layout.licensing, null);
+    WebView webView = (WebView) licenseView.findViewById(R.id.license_view);
+    webView.setWebViewClient(new WebViewClient() {
+      @Override
+      public boolean shouldOverrideUrlLoading(WebView view, String url) {
+        // Disable all links open from this web view.
+        return true;
+      }
+    });
+    webView.loadUrl(licenseUrl);
+
+    new AlertDialog.Builder(this)
+      .setTitle(R.string.ime_name)
+      .setView(licenseView)
+      .show();
+  }
+
+  public boolean isEnabled() {
+    boolean enabled = false;
+    for(InputMethodInfo i: ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).getEnabledInputMethodList()) {
+      if(getPackageName().contentEquals(i.getPackageName())) {
+        enabled = true;
+        break;
+      }
+    }
+    return enabled;
+  }
+
+  @TargetApi(VERSION_CODES.M)
+  public void requestPermission() {
+    if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+      requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}, 0);
+    }
+  }
+
+  public void deployOpencc() {
+    boolean b = Config.deployOpencc();
+  }
+
+  @Override
+  public boolean onPreferenceTreeClick(PreferenceScreen preferenceScreen, Preference preference) {
+    boolean b;
+    String key = preference.getKey();
+    switch (key) {
+      case "pref_enable": //啓用
+        if (!isEnabled()) startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS));
+        return true;
+      case "pref_select": //切換
+        ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).showInputMethodPicker();
+        return true;
+      case "pref_themes": //主題
+        new ThemeDlg(this);
+        return true;
+      case "pref_colors": //配色
+        new ColorDialog(this).show();
+        return true;
+      case "pref_schemas": //方案
+        new SchemaDialog(this);
+        return true;
+      case "pref_maintenance": //維護
+        Function.check();
+        return true;
+      case "pref_deploy_opencc": //部署OpenCC
+        deployOpencc();
+        return true;
+      case "pref_deploy": //部署
+        mProgressDialog.setMessage(getString(R.string.deploy_progress));
+        mProgressDialog.show();
+        new Thread(new Runnable(){
+          @Override
+          public void run() {
+            try{
+              Function.deploy();
+            }
+            catch(Exception e){
+            }
+            finally{
+              mProgressDialog.dismiss();
+              System.exit(0); //清理內存
+            }
+          }
+        }).start();
+        return true;
+      case "pref_sync": //同步
+        mProgressDialog.setMessage(getString(R.string.sync_progress));
+        mProgressDialog.show();
+        new Thread(new Runnable(){
+          @Override
+          public void run() {
+            try{
+              Function.sync();
+            }
+            catch(Exception e){
+            }
+            finally{
+              mProgressDialog.dismiss();
+              System.exit(0); //清理內存
+            }
+          }
+        }).start();
+        return true;
+      case "pref_reset": //回廠
+        new ResetDialog(this).show();
+        return true;
+      case "pref_licensing": //許可協議
+        showLicenseDialog();
+        return true;
+      case "pref_ui": //色調
+        finish();
+        Function.showPrefDialog(this);
+        return true;
+    }
+    return false;
+  }
+}

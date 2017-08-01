@@ -1,0 +1,40 @@
+ext.gitBranch = { ->
+    return 'git rev-parse --abbrev-ref HEAD'.execute().text.trim()
+}
+
+ext.gitVersionCode = { path ->
+    String s = ('bash +x ./version_code_from_git.sh ' + path).execute().text.trim();
+    if (s.isInteger()) {
+        int code = 3000 + s.toInteger();
+        println('./version_code_from_git.sh ' + path + ' -> ' + code)
+        return code
+    }
+    return 0;
+}
+
+ext.gitHash = { path ->
+    String hash = ('bash +x ./hash_code_from_git.sh ' + path).execute().text.trim()
+    println('./hash_code_from_git.sh ' + path + ' -> ' + hash)
+    return hash
+}
+
+ext.releaseChannel = { ->
+    if (rootProject.hasProperty("releaseChannel")) {
+        return rootProject.property("releaseChannel")
+    }
+    return "ONYX"
+}
+
+ext.releaseType = { ->
+    if (rootProject.hasProperty("releaseType")) {
+        return rootProject.property("releaseType")
+    }
+    return "RELEASE"
+}
+
+ext.releasePlatform = { ->
+    if (rootProject.hasProperty("releasePlatform")) {
+        return rootProject.property("releasePlatform")
+    }
+    return "ONYX"
+}

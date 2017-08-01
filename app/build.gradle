@@ -1,0 +1,60 @@
+
+apply plugin: 'com.android.application'
+
+
+apply from: file(rootProject.projectDir.absolutePath + '/signing.gradle')
+apply from: file(rootProject.projectDir.absolutePath + '/versioning.gradle')
+
+ def count = gitVersionCode(projectDir)
+ def tag = gitVersionCode(projectDir).toString() + " - " + gitHash(projectDir)
+def date = new Date().format('yyyyMMdd')
+
+android {
+    compileSdkVersion rootProject.ext.compatibleSdkVersion
+    buildToolsVersion rootProject.ext.buildToolsVersion
+
+    defaultConfig {
+        applicationId "com.osfans.trime"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode count
+        versionName "$tag-$date"
+        setProperty("archivesBaseName", "trime-$date")
+        sourceSets.main {
+            jniLibs.srcDir 'src/main/libs'
+            jni.srcDirs = []
+        }
+    }
+
+    signingConfigs {
+       release {
+       }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            //proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-android.txt'
+            signingConfig signingConfigs.release
+        }
+    }
+
+    def propsFile = rootProject.file('gradle.properties') //store release config in gradle.properties
+    def configName = 'release'
+
+    if (propsFile.exists() && android.signingConfigs.hasProperty(configName)) {
+        def props = new Properties()
+        props.load(new FileInputStream(propsFile))
+        if (props!=null && props.containsKey('storeFile')) {
+            android.signingConfigs[configName].storeFile = rootProject.file(props['storeFile'])
+            android.signingConfigs[configName].storePassword = props['storePassword']
+            android.signingConfigs[configName].keyAlias = props['keyAlias']
+            android.signingConfigs[configName].keyPassword = props['keyPassword']
+        }
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+}
+
